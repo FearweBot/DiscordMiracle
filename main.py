@@ -137,4 +137,34 @@ async def add(ctx, *, nome):
     else:
         personagens.append(nome)
         salvar_personagens(personagens)
-        await ctx.send(f
+        await ctx.send(f"Personagem **{nome}** adicionado com sucesso!")
+
+@bot.command()
+async def remove(ctx, *, nome):
+    nome = nome.strip()
+    personagens = carregar_personagens()
+    if nome not in personagens:
+        await ctx.send(f"O personagem **{nome}** não está na lista.")
+    else:
+        personagens.remove(nome)
+        salvar_personagens(personagens)
+        await ctx.send(f"Personagem **{nome}** removido com sucesso!")
+
+@bot.command()
+async def listar(ctx):
+    personagens = carregar_personagens()
+    if personagens:
+        await ctx.send("**👥 Personagens monitorados:**\n" + "\n".join(personagens))
+    else:
+        await ctx.send("Nenhum personagem está sendo monitorado no momento.")
+
+@bot.command()
+async def togglemortes(ctx):
+    config = carregar_config()
+    config["verificar_mortes"] = not config.get("verificar_mortes", False)
+    salvar_config(config)
+    estado = "ativado" if config["verificar_mortes"] else "desativado"
+    await ctx.send(f"☠️ Monitoramento de mortes foi **{estado}**.")
+
+if __name__ == "__main__":
+    bot.run(TOKEN)
