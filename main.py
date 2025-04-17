@@ -10,6 +10,10 @@ CANAL_ID = int(os.getenv("CANAL_ID"))
 CANAL_MORTES_ID = int(os.getenv("CANAL_MORTES_ID"))
 
 intents = discord.Intents.default()
+intents.message_content = True  # Permite ler mensagens e responder comandos
+intents.guilds = True
+intents.messages = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 personagens_file = "personagens.json"
@@ -48,33 +52,39 @@ def salvar_config(config):
         json.dump(config, f)
 
 def verificar_status(nome):
-    url = f"https://miracle74.com/?subtopic=characters&name={nome}"
-    resposta = requests.get(url)
-    soup = BeautifulSoup(resposta.text, "html.parser")
+    try:
+        url = f"https://miracle74.com/?subtopic=characters&name={nome}"
+        resposta = requests.get(url, timeout=10)
+        soup = BeautifulSoup(resposta.text, "html.parser")
 
-    if "Currently Offline" in soup.text:
-        return "🔴 Offline"
-    elif "Currently Online" in soup.text:
-        return "🟢 Online"
-    else:
-        return "❓ Não encontrado"
+        if "Currently Offline" in soup.text:
+            return "🔴 Offline"
+        elif "Currently Online" in soup.text:
+            return "🟢 Online"
+        else:
+            return "❓ Não encontrado"
+    except Exception as e:
+        return f"⚠️ Erro ao buscar"
 
 def verificar_ultima_morte(nome):
-    url = f"https://miracle74.com/?subtopic=characters&name={nome}"
-    resposta = requests.get(url)
-    soup = BeautifulSoup(resposta.text, "html.parser")
+    try:
+        url = f"https://miracle74.com/?subtopic=characters&name={nome}"
+        resposta = requests.get(url, timeout=10)
+        soup = BeautifulSoup(resposta.text, "html.parser")
 
-    tabela = soup.find("table", {"class": "Table3"})
-    if not tabela:
+        tabela = soup.find("table", {"class": "Table3"})
+        if not tabela:
+            return None
+
+        textos = tabela.get_text(separator="\n").split("\n")
+        mortes = [linha.strip() for linha in textos if "Died at Level" in linha]
+        return mortes[0] if mortes else None
+    except:
         return None
-
-    textos = tabela.get_text(separator="\n").split("\n")
-    mortes = [linha.strip() for linha in textos if "Died at Level" in linha]
-    return mortes[0] if mortes else None
 
 @bot.event
 async def on_ready():
-    print(f"Bot conectado como {bot.user}")
+    print(f"✅ Bot conectado como {bot.user}")
     checar_status.start()
 
 @tasks.loop(minutes=3)
@@ -85,6 +95,10 @@ async def checar_status():
     status_msg = "**📋 Status dos personagens monitorados:**\n\n"
     canal_status = bot.get_channel(CANAL_ID)
     canal_mortes = bot.get_channel(CANAL_MORTES_ID)
+
+    if not canal_status or not canal_mortes:
+        print("❌ Não foi possível acessar os canais do Discord.")
+        return
 
     for nome in personagens:
         status = verificar_status(nome)
@@ -98,20 +112,21 @@ async def checar_status():
 
     salvar_mortes(mortes_anteriores)
 
-    if not os.path.exists(mensagem_id_file):
-        mensagem = await canal_status.send(status_msg)
-        with open(mensagem_id_file, "w") as f:
-            f.write(str(mensagem.id))
-    else:
-        with open(mensagem_id_file, "r") as f:
-            msg_id = int(f.read())
-        try:
-            mensagem = await canal_status.fetch_message(msg_id)
-            await mensagem.edit(content=status_msg)
-        except:
+    try:
+        if not os.path.exists(mensagem_id_file):
             mensagem = await canal_status.send(status_msg)
             with open(mensagem_id_file, "w") as f:
                 f.write(str(mensagem.id))
+        else:
+            with open(mensagem_id_file, "r") as f:
+                msg_id = int(f.read())
+            mensagem = await canal_status.fetch_message(msg_id)
+            await mensagem.edit(content=status_msg)
+    except Exception as e:
+        print(f"Erro ao atualizar mensagem de status: {e}")
+        mensagem = await canal_status.send(status_msg)
+        with open(mensagem_id_file, "w") as f:
+            f.write(str(mensagem.id))
 
 @bot.command()
 async def add(ctx, *, nome):
@@ -122,33 +137,4 @@ async def add(ctx, *, nome):
     else:
         personagens.append(nome)
         salvar_personagens(personagens)
-        await ctx.send(f"Personagem **{nome}** adicionado com sucesso!")
-
-@bot.command()
-async def remove(ctx, *, nome):
-    nome = nome.strip()
-    personagens = carregar_personagens()
-    if nome not in personagens:
-        await ctx.send(f"O personagem **{nome}** não está na lista.")
-    else:
-        personagens.remove(nome)
-        salvar_personagens(personagens)
-        await ctx.send(f"Personagem **{nome}** removido com sucesso!")
-
-@bot.command()
-async def listar(ctx):
-    personagens = carregar_personagens()
-    if personagens:
-        await ctx.send("**👥 Personagens monitorados:**\n" + "\n".join(personagens))
-    else:
-        await ctx.send("Nenhum personagem está sendo monitorado no momento.")
-
-@bot.command()
-async def togglemortes(ctx):
-    config = carregar_config()
-    config["verificar_mortes"] = not config.get("verificar_mortes", False)
-    salvar_config(config)
-    estado = "ativado" if config["verificar_mortes"] else "desativado"
-    await ctx.send(f"☠️ Monitoramento de mortes foi **{estado}**.")
-
-bot.run(TOKEN)
+        await ctx.send(f
